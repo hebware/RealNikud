@@ -1,0 +1,58 @@
+
+name: Build Real Nikud EXE - שָׁלוֹם
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      
+      - name: Create service file
+        shell: pwsh
+        run: |
+          @"
+          from fastapi import FastAPI
+          from pydantic import BaseModel
+          app = FastAPI()
+          class Req(BaseModel):
+              text: str
+          nak = None
+          try:
+              from nakdimon import Nakdimon
+              nak = Nakdimon()
+              print("Nakdimon loaded")
+          except Exception as e:
+              print(f"Nakdimon fail: {e}")
+          def add_nikud(t: str):
+              if nak and hasattr(nak, 'nakdan'):
+                  return nak.nakdan(t)
+              return t
+          @app.post("/nikud")
+          def nikud(r: Req):
+              return {"text": r.text, "nikud": add_nikud(r.text)}
+          @app.get("/")
+          def root():
+              return {"status": "ok"}
+          if __name__ == "__main__":
+              import uvicorn
+              uvicorn.run(app, host="127.0.0.1", port=8080)
+          "@ | Set-Content nikud_real_service.py -Encoding UTF8
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Build Real Nikud EXE
+        shell: pwsh
+        run: |
+          pip install --upgrade pip
+          pip install nakdimon fastapi uvicorn pyinstaller
+          # Test import
+          python -c "from nakdimon import Nakdimon; print('Nakdimon OK')"
+          pyinstaller --onefile nikud_real_service.py -n nikud_real_service_x64 --clean --noconfirm
+          dir dist
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: real-nikud-exe
+          path: dist/nikud_real_service_x64.exe
